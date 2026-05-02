@@ -1,3 +1,9 @@
+## 0.1.2 - 2026-05-02
+
+### Bug Fixes
+
+- Release process
+
 ## 0.1.1 - 2026-05-02
 
 ### Refactoring
