@@ -1,6 +1,6 @@
 {
   "name": "codex-loop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Codex lifecycle loop hooks for minimum-duration, rounds-based, and goal-confirmed agent work.",
   "author": {
     "name": "Pedro Nauck",
