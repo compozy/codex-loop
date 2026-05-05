@@ -1,5 +1,11 @@
-## 0.1.2 - 2026-05-02
+## 0.1.3 - 2026-05-05
 
 ### Bug Fixes
 
-- Release process
+- Upgrade
+### Documentation
+
+- Fix readme
+### Features
+
+- Scoped config
