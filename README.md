@@ -30,6 +30,7 @@ It is designed for release-grade QA, long-running hardening passes, and repeated
 - **Activation by header, not flag.** Loops only start when the prompt's first line contains a structured `[[CODEX_LOOP ...]]` header, so day-to-day Codex use is untouched.
 - **Independent goal confirmation.** Goal loops invoke a configurable headless reviewer that returns normal text, then codex-loop privately interprets that text into a structured verdict.
 - **Pre-continuation context hook.** `pre_loop_continue` runs right before each automatic continuation so the next prompt can carry fresh local context — test summaries, changed files, build status, custom checklists.
+- **Built-in tracking skill.** The bundled `codex-loop` skill can bootstrap `.codex/loop/<name>/` artifacts for restart-safe task state, per-iteration memory, validation evidence, and final completion signatures.
 - **Codex lifecycle integration.** Ships as a Codex plugin, contributing `UserPromptSubmit` and `Stop` hooks, and mirrors managed registrations into `~/.codex/hooks.json` for current Codex builds.
 - **Local-first state.** Loop state lives under `~/.codex/codex-loop/`, isolated by Codex `session_id`. Compact verdict metadata lands in `~/.codex/codex-loop/runs.jsonl`.
 - **Single Go binary.** No Python runtime, no daemon, and no built-in network client except the explicit `codex-loop upgrade` release download path. User-configured continuation and goal commands run as external tools.
@@ -64,6 +65,7 @@ codex-loop upgrade --version v0.1.1
 - `~/.codex/codex-loop/bin/codex-loop`
 - `~/.codex/codex-loop/loops/`
 - `~/.codex/codex-loop/config.toml`
+- `~/.codex/skills/codex-loop/` with the managed built-in tracking skill
 - `~/.codex/hooks.json` with managed `UserPromptSubmit` and `Stop` hook registrations
 - `~/.codex/config.toml` with `features.codex_hooks = true`
 
@@ -151,7 +153,7 @@ codex-loop version
 The global runtime config lives at `~/.codex/codex-loop/config.toml` and supports:
 
 ```toml
-optional_skill_name = ""
+optional_skill_name = "codex-loop"
 optional_skill_path = ""
 extra_continuation_guidance = ""
 
@@ -175,8 +177,9 @@ timeout_seconds = 60
 max_output_bytes = 12000
 ```
 
-- `optional_skill_name` and `optional_skill_path` are used only when the path resolves inside the active workspace.
-- `optional_skill_path` may point to a skill directory or directly to `SKILL.md`.
+- `optional_skill_name = "codex-loop"` is the default installed behavior, so automatic continuations name the managed built-in tracking skill.
+- Set `optional_skill_name` to another non-empty skill name to override the built-in tracking skill.
+- `optional_skill_path` is optional. When set for a custom workspace skill, it may point to a skill directory or directly to `SKILL.md`, and must resolve inside the active workspace.
 - `extra_continuation_guidance` appends extra text to every automatic continuation.
 - `hooks.stop_timeout_seconds` controls the managed Codex `Stop` hook timeout written by `codex-loop install`; rerun `codex-loop install` and restart Codex after changing it.
 
@@ -194,12 +197,51 @@ Project-local example:
 
 ```toml
 # ./codex-loop.toml
+optional_skill_name = "codex-loop"
+extra_continuation_guidance = "Resume from .codex/loop/<name>/state.json and run one tracked action before stopping."
+
 [pre_loop_continue]
 command = ".codex/scripts/loop-context.sh --input $INPUT_FILE"
 cwd = "workspace_root"
 timeout_seconds = 30
 max_output_bytes = 8000
 ```
+
+### 🧭 Built-In Tracking Skill
+
+The plugin ships a `codex-loop` skill with two lanes. `codex-loop install`
+copies that skill into `${CODEX_HOME:-$HOME/.codex}/skills/codex-loop/` so
+the name-only default `optional_skill_name = "codex-loop"` resolves as a
+normal Codex skill instead of depending on a plugin cache path.
+
+- setup/status guidance for installing, upgrading, activating, and inspecting the runtime;
+- tracked execution for long-running implementation, QA, review, or remediation loops that need durable state across restarts.
+
+Tracked execution stores project-local artifacts under:
+
+```text
+.codex/loop/<name>/
+  request.md
+  state.json
+  tasks/task-001.md
+  memory/MEMORY.md
+  memory/iter-001.md
+```
+
+To use it explicitly, include the skill in the prompt:
+
+```text
+[[CODEX_LOOP name="release-stress-qa" goal="complete tracked QA with all tasks done, blockers closed, and verification PASS"]]
+
+Use the codex-loop skill. Track the work under .codex/loop/release-stress-qa/.
+```
+
+`codex-loop install` creates new runtime configs with
+`optional_skill_name = "codex-loop"` and migrates missing or blank
+`optional_skill_name` values to that default. Non-empty custom skill names are
+preserved. The managed skill copy is refreshed on every install. If
+`~/.codex/skills/codex-loop/` already exists without the codex-loop management
+marker, install stops instead of overwriting it.
 
 ### 🎯 Goal Confirmation
 
@@ -300,7 +342,12 @@ With that config, every automatic continuation prompt will include the script st
 codex-loop uninstall
 ```
 
-This removes only `~/.codex/codex-loop/`. It leaves `~/.codex/config.toml` and Codex plugin install state unchanged. It also removes only the `codex-loop`-managed hook registrations from `~/.codex/hooks.json`, preserving unrelated user hooks.
+This removes only `~/.codex/codex-loop/` and the managed skill copy at
+`~/.codex/skills/codex-loop/` when it was created by codex-loop. It leaves
+`~/.codex/config.toml` and Codex plugin install state unchanged. It also
+removes only the `codex-loop`-managed hook registrations from
+`~/.codex/hooks.json`, preserving unrelated user hooks and unmanaged skill
+directories.
 
 ## 🛠️ Development
 

@@ -138,6 +138,14 @@ func (p Paths) RuntimeConfigPath() string {
 	return filepath.Join(p.RuntimeRoot(), "config.toml")
 }
 
+func (p Paths) SkillsDir() string {
+	return filepath.Join(p.CodexHome, "skills")
+}
+
+func (p Paths) BuiltInSkillDir() string {
+	return filepath.Join(p.SkillsDir(), RuntimeName)
+}
+
 func (p Paths) RunsLogPath() string {
 	return filepath.Join(p.RuntimeRoot(), "runs.jsonl")
 }

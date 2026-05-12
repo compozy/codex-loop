@@ -54,6 +54,14 @@ func TestInstallCreatesManagedFiles(t *testing.T) {
 	if _, err := os.Stat(paths.RuntimeConfigPath()); err != nil {
 		t.Fatalf("expected runtime config: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(paths.BuiltInSkillDir(), managedSkillMarkerName)); err != nil {
+		t.Fatalf("expected managed built-in skill marker: %v", err)
+	}
+	assertContains(t, readFile(t, filepath.Join(paths.BuiltInSkillDir(), "SKILL.md")), "name: codex-loop")
+	assertContains(t, readFile(t, filepath.Join(paths.BuiltInSkillDir(), "references", "tracking-protocol.md")), "# Tracking Protocol")
+	assertContains(t, readFile(t, filepath.Join(paths.BuiltInSkillDir(), "scripts", "detect-next.py")), "Print the next codex-loop tracking action")
+	runtimeConfigText := readFile(t, paths.RuntimeConfigPath())
+	assertContains(t, runtimeConfigText, "optional_skill_name = \"codex-loop\"")
 	configText := readFile(t, paths.ConfigPath())
 	assertContains(t, configText, "codex_hooks = true")
 	assertContains(t, configText, "other_flag = true")
@@ -64,11 +72,12 @@ func TestInstallCreatesManagedFiles(t *testing.T) {
 
 	joined := strings.Join(messages, "\n")
 	assertContains(t, joined, "Installed runtime binary")
+	assertContains(t, joined, "Installed built-in codex-loop skill")
 	assertContains(t, joined, "Updated managed hook config")
 	assertContains(t, joined, "Restart Codex")
 }
 
-func TestInstallPreservesExistingRuntimeConfig(t *testing.T) {
+func TestInstallMigratesBlankRuntimeConfigToBuiltInSkill(t *testing.T) {
 	t.Parallel()
 
 	paths := mustPaths(t)
@@ -76,7 +85,28 @@ func TestInstallPreservesExistingRuntimeConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(paths.RuntimeConfigPath()), 0o755); err != nil {
 		t.Fatalf("create runtime dir: %v", err)
 	}
-	customConfig := `extra_continuation_guidance = "keep this"`
+	customConfig := "optional_skill_name = \"\"\nextra_continuation_guidance = \"keep this\"\n"
+	if err := os.WriteFile(paths.RuntimeConfigPath(), []byte(customConfig), 0o644); err != nil {
+		t.Fatalf("write runtime config: %v", err)
+	}
+
+	if _, err := Install(paths, Options{SourceBinary: sourceBinary}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	got := readFile(t, paths.RuntimeConfigPath())
+	assertContains(t, got, "optional_skill_name = \"codex-loop\"")
+	assertContains(t, got, "extra_continuation_guidance = \"keep this\"")
+}
+
+func TestInstallPreservesCustomOptionalSkill(t *testing.T) {
+	t.Parallel()
+
+	paths := mustPaths(t)
+	sourceBinary := writeSourceBinary(t)
+	if err := os.MkdirAll(filepath.Dir(paths.RuntimeConfigPath()), 0o755); err != nil {
+		t.Fatalf("create runtime dir: %v", err)
+	}
+	customConfig := "optional_skill_name = \"focused-qa\"\noptional_skill_path = \".agents/skills/focused-qa\"\nextra_continuation_guidance = \"keep this\"\n"
 	if err := os.WriteFile(paths.RuntimeConfigPath(), []byte(customConfig), 0o644); err != nil {
 		t.Fatalf("write runtime config: %v", err)
 	}
@@ -85,7 +115,58 @@ func TestInstallPreservesExistingRuntimeConfig(t *testing.T) {
 		t.Fatalf("install: %v", err)
 	}
 	if got := readFile(t, paths.RuntimeConfigPath()); got != customConfig {
-		t.Fatalf("expected runtime config preserved, got %q", got)
+		t.Fatalf("expected custom runtime config preserved, got %q", got)
+	}
+}
+
+func TestInstallAddsBuiltInSkillWhenRuntimeConfigLacksOptionalSkill(t *testing.T) {
+	t.Parallel()
+
+	paths := mustPaths(t)
+	sourceBinary := writeSourceBinary(t)
+	if err := os.MkdirAll(filepath.Dir(paths.RuntimeConfigPath()), 0o755); err != nil {
+		t.Fatalf("create runtime dir: %v", err)
+	}
+	customConfig := "[pre_loop_continue]\ntimeout_seconds = 12\n"
+	if err := os.WriteFile(paths.RuntimeConfigPath(), []byte(customConfig), 0o644); err != nil {
+		t.Fatalf("write runtime config: %v", err)
+	}
+
+	if _, err := Install(paths, Options{SourceBinary: sourceBinary}); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	got := readFile(t, paths.RuntimeConfigPath())
+	assertContains(t, got, "optional_skill_name = \"codex-loop\"")
+	assertContains(t, got, "[pre_loop_continue]")
+	assertContains(t, got, "timeout_seconds = 12")
+}
+
+func TestInstallRefusesToOverwriteUnmanagedBuiltInSkillDirectory(t *testing.T) {
+	t.Parallel()
+
+	paths := mustPaths(t)
+	sourceBinary := writeSourceBinary(t)
+	if err := os.MkdirAll(paths.BuiltInSkillDir(), 0o755); err != nil {
+		t.Fatalf("create built-in skill dir: %v", err)
+	}
+	customSkill := "custom skill"
+	customSkillPath := filepath.Join(paths.BuiltInSkillDir(), "SKILL.md")
+	if err := os.WriteFile(customSkillPath, []byte(customSkill), 0o644); err != nil {
+		t.Fatalf("write custom skill: %v", err)
+	}
+
+	_, err := Install(paths, Options{SourceBinary: sourceBinary})
+	if err == nil {
+		t.Fatal("expected unmanaged skill collision error")
+	}
+	if !strings.Contains(err.Error(), "unmanaged codex-loop skill directory") {
+		t.Fatalf("expected unmanaged skill error, got %v", err)
+	}
+	if got := readFile(t, customSkillPath); got != customSkill {
+		t.Fatalf("expected unmanaged skill preserved, got %q", got)
+	}
+	if _, statErr := os.Stat(paths.RuntimeBinaryPath()); !os.IsNotExist(statErr) {
+		t.Fatalf("expected install to stop before runtime binary write, stat err: %v", statErr)
 	}
 }
 
@@ -169,6 +250,15 @@ func TestUninstallRemovesOnlyManagedHooksAndRuntime(t *testing.T) {
 	if err := os.MkdirAll(paths.RuntimeRoot(), 0o755); err != nil {
 		t.Fatalf("create runtime root: %v", err)
 	}
+	if err := os.MkdirAll(paths.BuiltInSkillDir(), 0o755); err != nil {
+		t.Fatalf("create built-in skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(paths.BuiltInSkillDir(), managedSkillMarkerName), []byte("managed_by = \"codex-loop\"\n"), 0o644); err != nil {
+		t.Fatalf("write built-in skill marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(paths.BuiltInSkillDir(), "SKILL.md"), []byte("managed skill"), 0o644); err != nil {
+		t.Fatalf("write built-in skill: %v", err)
+	}
 	if err := os.MkdirAll(paths.CodexHome, 0o755); err != nil {
 		t.Fatalf("create codex home: %v", err)
 	}
@@ -212,6 +302,9 @@ func TestUninstallRemovesOnlyManagedHooksAndRuntime(t *testing.T) {
 	if _, err := os.Stat(paths.RuntimeRoot()); !os.IsNotExist(err) {
 		t.Fatalf("expected runtime removed, stat err: %v", err)
 	}
+	if _, err := os.Stat(paths.BuiltInSkillDir()); !os.IsNotExist(err) {
+		t.Fatalf("expected managed built-in skill removed, stat err: %v", err)
+	}
 	if got := readFile(t, paths.ConfigPath()); got != configText {
 		t.Fatalf("expected config preserved, got %q", got)
 	}
@@ -223,6 +316,27 @@ func TestUninstallRemovesOnlyManagedHooksAndRuntime(t *testing.T) {
 	joined := strings.Join(messages, "\n")
 	assertContains(t, joined, "Removed managed hook registrations")
 	assertContains(t, joined, "Removed managed runtime directory")
+	assertContains(t, joined, "Removed managed built-in skill directory")
+}
+
+func TestUninstallPreservesUnmanagedSkillDirectory(t *testing.T) {
+	t.Parallel()
+
+	paths := mustPaths(t)
+	if err := os.MkdirAll(paths.BuiltInSkillDir(), 0o755); err != nil {
+		t.Fatalf("create built-in skill dir: %v", err)
+	}
+	customSkill := "custom skill"
+	if err := os.WriteFile(filepath.Join(paths.BuiltInSkillDir(), "SKILL.md"), []byte(customSkill), 0o644); err != nil {
+		t.Fatalf("write custom skill: %v", err)
+	}
+
+	if _, err := Uninstall(paths); err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if got := readFile(t, filepath.Join(paths.BuiltInSkillDir(), "SKILL.md")); got != customSkill {
+		t.Fatalf("expected unmanaged skill preserved, got %q", got)
+	}
 }
 
 func TestStatusRecordsJSONRoundTrip(t *testing.T) {

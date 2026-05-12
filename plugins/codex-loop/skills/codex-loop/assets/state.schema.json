@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex Loop Tracking State",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "loop_name",
+    "created_at",
+    "updated_at",
+    "iteration",
+    "status",
+    "request",
+    "verification",
+    "tasks",
+    "current_task",
+    "blockers",
+    "history"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "loop_name": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "string", "minLength": 1 },
+    "iteration": { "type": "integer", "minimum": 0 },
+    "status": { "enum": ["active", "blocked", "complete"] },
+    "request": {
+      "type": "object",
+      "required": ["text", "goal"],
+      "properties": {
+        "text": { "type": "string" },
+        "goal": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["command", "status", "evidence", "last_run"],
+      "properties": {
+        "command": { "type": "string" },
+        "status": { "type": ["string", "null"], "enum": ["PASS", "FAIL", null] },
+        "evidence": { "type": "string" },
+        "last_run": { "type": ["string", "null"] }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "description", "acceptance", "status", "memory", "created_at", "completed_at"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^task-[0-9]{3}$" },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "acceptance": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["pending", "in_progress", "completed", "blocked"] },
+          "memory": { "type": ["string", "null"] },
+          "created_at": { "type": "string" },
+          "completed_at": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "current_task": { "type": ["string", "null"] },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "history": { "type": "array" }
+  },
+  "additionalProperties": false
+}

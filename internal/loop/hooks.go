@@ -311,8 +311,12 @@ func GoalContinuationReason(runtimeConfig RuntimeConfig, record LoopRecord, resu
 		"",
 		"Before stopping again, complete the missing work and gather concrete validation evidence.",
 	)
-	if continuationConfig.SkillName != "" && continuationConfig.SkillPath != "" {
-		lines = append(lines, fmt.Sprintf("Use the %s skill at %s.", continuationConfig.SkillName, continuationConfig.SkillPath))
+	if continuationConfig.SkillName != "" {
+		if continuationConfig.SkillPath != "" {
+			lines = append(lines, fmt.Sprintf("Use the %s skill at %s.", continuationConfig.SkillName, continuationConfig.SkillPath))
+		} else {
+			lines = append(lines, fmt.Sprintf("Use the %s skill.", continuationConfig.SkillName))
+		}
 	}
 	if continuationConfig.ExtraGuidance != "" {
 		lines = append(lines, "", "Additional configured guidance:", continuationConfig.ExtraGuidance)
@@ -392,8 +396,12 @@ func ContinuationReason(runtimeConfig RuntimeConfig, record LoopRecord, remainin
 	if ResolveLimitMode(record) == LimitModeRounds {
 		lines = append(lines, "- a fresh challenge to any earlier conclusion before you stop again")
 	}
-	if continuationConfig.SkillName != "" && continuationConfig.SkillPath != "" {
-		lines = append(lines, fmt.Sprintf("- explicit use of the %s skill at %s", continuationConfig.SkillName, continuationConfig.SkillPath))
+	if continuationConfig.SkillName != "" {
+		if continuationConfig.SkillPath != "" {
+			lines = append(lines, fmt.Sprintf("- explicit use of the %s skill at %s", continuationConfig.SkillName, continuationConfig.SkillPath))
+		} else {
+			lines = append(lines, fmt.Sprintf("- explicit use of the %s skill", continuationConfig.SkillName))
+		}
 	}
 	if continuationConfig.ExtraGuidance != "" {
 		lines = append(lines, "", "Additional configured guidance:", continuationConfig.ExtraGuidance)

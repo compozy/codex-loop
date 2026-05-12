@@ -2,9 +2,24 @@
 
 Read this reference when the project has a Web UI surface and browser flows are in scope.
 
-## agent-browser Core Loop
+## Contents
 
-Every browser interaction follows the **Open -> Snapshot -> Interact -> Re-snapshot -> Verify** cycle.
+- Preferred Browser Order
+- `agent-browser` Fallback Core Loop (Navigation, Snapshot/Interaction, Evidence, Waiting)
+- Key Rules
+- Web UI QA Categories (Functional, Form Validation, Error/Loading, Navigation, Responsive, Accessibility, User Understanding, Anti-Smoke Guardrail)
+- Authentication Flows
+- Viewport Testing
+
+## Preferred Browser Order
+
+1. Use `browser-use:browser` first when the Browser plugin is available.
+2. Use `agent-browser` only when `browser-use` setup fails or is unavailable.
+3. Record which browser tool was used for each high-risk flow.
+
+## agent-browser Fallback Core Loop
+
+Every `agent-browser` fallback interaction follows the **Open -> Snapshot -> Interact -> Re-snapshot -> Verify** cycle.
 
 ### Navigation
 
@@ -55,6 +70,7 @@ agent-browser wait 2000                 # Wait milliseconds
 3. **Use `snapshot -i` for interaction planning.** It returns only interactive elements, which is more token-efficient and easier to parse than a full accessibility tree.
 4. **Use semantic waiting** (`wait --text`, `wait @e1`) instead of fixed-duration waits whenever possible.
 5. **Chain commands with `&&`** when intermediate output is not needed. Run separately when snapshot output must be parsed before the next action.
+6. **Do not skip browser-use preflight silently.** If `browser-use` fails, record the failed prerequisite before falling back to `agent-browser`.
 
 ## Web UI QA Categories
 
@@ -96,6 +112,18 @@ Test when the changed surface affects layout or when responsive behavior is regr
 - [ ] Focus indicators are visible on interactive elements
 - [ ] Form inputs have associated labels
 - [ ] Images have alt text
+
+### User Understanding
+- [ ] The page renders real scenario state created through CLI/API/runtime flows, not just static fixtures
+- [ ] The user can identify what happened, the current status, and the next available action from the rendered UI alone
+- [ ] Generated artifacts or persisted application state are visible or reachable when the product exposes them
+- [ ] Empty, stale, historical, and error states explain the situation without requiring direct DB/API inspection
+- [ ] Screenshots and DOM snapshots prove understandable product state, not just successful navigation
+
+### Anti-Smoke Guardrail
+- [ ] A route-render check is treated as smoke only, not as proof of behavior
+- [ ] A list-count check is treated as smoke unless it is tied to a specific persisted object from the scenario
+- [ ] Browser evidence is paired with the journey's expected end-state observable (the goal in `references/journey-maps.md`)
 
 ## Authentication Flows
 
@@ -139,13 +167,8 @@ agent-browser --session desktop snapshot -i
 agent-browser --session desktop screenshot <qa-output-path>/desktop.png
 ```
 
-## Pipeline Position
+## When to run Web UI QA
 
-Browser-based QA runs **after** CLI-based validation in this order:
+Web UI QA runs **after the build is deployed and reachable** in a real-user-realistic environment. The CI gate (lint, build, unit, integration) is a precondition for QA — not a QA step. If those aren't already green, stop and surface the gap; running user QA on a broken build wastes the session.
 
-1. Lint + type-check + static analysis
-2. Build
-3. Unit tests
-4. Integration tests
-5. **Start dev server -> Browser/E2E flows** (Web UI QA)
-6. Visual regression (if baselines exist)
+For audits of AI-implemented work that need CI-gate execution as part of verification, use the `agent-output-audit` companion skill instead.

@@ -3,15 +3,23 @@ package installer
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/compozy/codex-loop/internal/loop"
+	codexloopplugin "github.com/compozy/codex-loop/plugins/codex-loop"
 )
 
 var inlineHooksRE = regexp.MustCompile(`(?m)^\s*\[\[?\s*hooks(?:[.\]])`)
+
+const (
+	bundledSkillRoot       = "skills/codex-loop"
+	managedSkillMarkerName = ".codex-loop-managed"
+)
 
 type Options struct {
 	SourceBinary string
@@ -19,6 +27,9 @@ type Options struct {
 
 func Install(paths loop.Paths, opts Options) ([]string, error) {
 	messages := make([]string, 0)
+	if err := validateBuiltInSkillInstallTarget(paths); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(paths.RuntimeBinDir(), 0o755); err != nil {
 		return nil, fmt.Errorf("create runtime bin directory: %w", err)
 	}
@@ -39,12 +50,19 @@ func Install(paths loop.Paths, opts Options) ([]string, error) {
 	}
 	messages = append(messages, fmt.Sprintf("Installed runtime binary at %s", paths.RuntimeBinaryPath()))
 
-	configCreated, err := ensureRuntimeConfig(paths)
+	if err := installBuiltInSkill(paths); err != nil {
+		return nil, err
+	}
+	messages = append(messages, fmt.Sprintf("Installed built-in codex-loop skill at %s", paths.BuiltInSkillDir()))
+
+	configCreated, runtimeConfigUpdated, err := ensureRuntimeConfig(paths)
 	if err != nil {
 		return nil, err
 	}
 	if configCreated {
 		messages = append(messages, fmt.Sprintf("Created optional runtime config at %s", paths.RuntimeConfigPath()))
+	} else if runtimeConfigUpdated {
+		messages = append(messages, fmt.Sprintf("Updated optional runtime config at %s", paths.RuntimeConfigPath()))
 	} else {
 		messages = append(messages, fmt.Sprintf("Preserved existing runtime config at %s", paths.RuntimeConfigPath()))
 	}
@@ -96,6 +114,15 @@ func Uninstall(paths loop.Paths) ([]string, error) {
 			return nil, fmt.Errorf("remove runtime directory %q: %w", runtimeRoot, err)
 		}
 		messages = append(messages, fmt.Sprintf("Removed managed runtime directory %s", runtimeRoot))
+	}
+	removedSkill, err := removeManagedBuiltInSkill(paths)
+	if err != nil {
+		return nil, err
+	}
+	if removedSkill {
+		messages = append(messages, fmt.Sprintf("Removed managed built-in skill directory %s", paths.BuiltInSkillDir()))
+	} else {
+		messages = append(messages, fmt.Sprintf("No managed built-in skill directory found at %s", paths.BuiltInSkillDir()))
 	}
 	messages = append(messages, "Left ~/.codex/config.toml unchanged, including features.codex_hooks.")
 	return messages, nil
@@ -174,19 +201,140 @@ func EnsureCodexHooksEnabled(configPath string) (bool, error) {
 	return true, nil
 }
 
-func ensureRuntimeConfig(paths loop.Paths) (bool, error) {
+func ensureRuntimeConfig(paths loop.Paths) (bool, bool, error) {
 	if _, err := os.Stat(paths.RuntimeConfigPath()); err == nil {
-		return false, nil
+		updated, updateErr := ensureBuiltInOptionalSkill(paths.RuntimeConfigPath())
+		return false, updated, updateErr
 	} else if !os.IsNotExist(err) {
-		return false, fmt.Errorf("stat runtime config %q: %w", paths.RuntimeConfigPath(), err)
+		return false, false, fmt.Errorf("stat runtime config %q: %w", paths.RuntimeConfigPath(), err)
 	}
 	if err := os.MkdirAll(filepath.Dir(paths.RuntimeConfigPath()), 0o755); err != nil {
-		return false, fmt.Errorf("create runtime config directory: %w", err)
+		return false, false, fmt.Errorf("create runtime config directory: %w", err)
 	}
 	if err := os.WriteFile(paths.RuntimeConfigPath(), []byte(loop.DefaultRuntimeConfig), 0o644); err != nil {
-		return false, fmt.Errorf("write runtime config: %w", err)
+		return false, false, fmt.Errorf("write runtime config: %w", err)
+	}
+	return true, false, nil
+}
+
+func ensureBuiltInOptionalSkill(configPath string) (bool, error) {
+	contentBytes, err := os.ReadFile(configPath)
+	if err != nil {
+		return false, fmt.Errorf("read runtime config %q: %w", configPath, err)
+	}
+	content := strings.ReplaceAll(string(contentBytes), "\r\n", "\n")
+	lines := strings.Split(content, "\n")
+	optionalSkillRE := regexp.MustCompile(`^\s*optional_skill_name\s*=`)
+	for index, line := range lines {
+		if !optionalSkillRE.MatchString(line) {
+			continue
+		}
+		_, rawValue, _ := strings.Cut(line, "=")
+		value, ok := quotedConfigString(rawValue)
+		if !ok || strings.TrimSpace(value) != "" {
+			return false, nil
+		}
+		indent := line[:len(line)-len(strings.TrimLeft(line, " \t"))]
+		lines[index] = fmt.Sprintf(`%soptional_skill_name = %q`, indent, loop.DefaultOptionalSkillName)
+		return writeRuntimeConfigLines(configPath, lines)
+	}
+
+	inserted := append([]string{fmt.Sprintf(`optional_skill_name = %q`, loop.DefaultOptionalSkillName)}, lines...)
+	return writeRuntimeConfigLines(configPath, inserted)
+}
+
+func quotedConfigString(rawValue string) (string, bool) {
+	valueText := strings.TrimSpace(rawValue)
+	if valueText == "" {
+		return "", false
+	}
+	value, err := strconv.Unquote(valueText)
+	if err == nil {
+		return value, true
+	}
+	return "", false
+}
+
+func writeRuntimeConfigLines(configPath string, lines []string) (bool, error) {
+	updated := strings.Join(lines, "\n")
+	updated = strings.TrimRight(updated, "\n") + "\n"
+	if err := os.WriteFile(configPath, []byte(updated), 0o644); err != nil {
+		return false, fmt.Errorf("write runtime config %q: %w", configPath, err)
 	}
 	return true, nil
+}
+
+func installBuiltInSkill(paths loop.Paths) error {
+	destinationRoot := paths.BuiltInSkillDir()
+	if hasManagedSkillMarker(destinationRoot) {
+		if err := os.RemoveAll(destinationRoot); err != nil {
+			return fmt.Errorf("remove previous built-in skill directory %q: %w", destinationRoot, err)
+		}
+	}
+	if err := fs.WalkDir(codexloopplugin.SkillFS, bundledSkillRoot, func(sourcePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if sourcePath == bundledSkillRoot {
+			return nil
+		}
+		relative := strings.TrimPrefix(sourcePath, bundledSkillRoot+"/")
+		destination := filepath.Join(destinationRoot, filepath.FromSlash(relative))
+		if entry.IsDir() {
+			if err := os.MkdirAll(destination, 0o755); err != nil {
+				return fmt.Errorf("create skill directory %q: %w", destination, err)
+			}
+			return nil
+		}
+		content, err := codexloopplugin.SkillFS.ReadFile(sourcePath)
+		if err != nil {
+			return fmt.Errorf("read bundled skill file %q: %w", sourcePath, err)
+		}
+		if err := writeFileAtomic(destination, content, 0o644); err != nil {
+			return fmt.Errorf("write built-in skill file %q: %w", destination, err)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := writeFileAtomic(filepath.Join(destinationRoot, managedSkillMarkerName), []byte("managed_by = \"codex-loop\"\n"), 0o644); err != nil {
+		return fmt.Errorf("write built-in skill marker: %w", err)
+	}
+	return nil
+}
+
+func validateBuiltInSkillInstallTarget(paths loop.Paths) error {
+	destinationRoot := paths.BuiltInSkillDir()
+	if hasManagedSkillMarker(destinationRoot) {
+		return nil
+	}
+	entries, err := os.ReadDir(destinationRoot)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read built-in skill directory %q: %w", destinationRoot, err)
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("unmanaged codex-loop skill directory already exists at %s; move it aside before running codex-loop install", destinationRoot)
+	}
+	return nil
+}
+
+func removeManagedBuiltInSkill(paths loop.Paths) (bool, error) {
+	destinationRoot := paths.BuiltInSkillDir()
+	if !hasManagedSkillMarker(destinationRoot) {
+		return false, nil
+	}
+	if err := os.RemoveAll(destinationRoot); err != nil {
+		return false, fmt.Errorf("remove managed built-in skill directory %q: %w", destinationRoot, err)
+	}
+	return true, nil
+}
+
+func hasManagedSkillMarker(skillDir string) bool {
+	info, err := os.Stat(filepath.Join(skillDir, managedSkillMarkerName))
+	return err == nil && !info.IsDir()
 }
 
 func installRuntimeBinary(source string, destination string) error {
@@ -226,6 +374,33 @@ func copyFile(source string, destination string, mode os.FileMode) error {
 	if _, err := io.Copy(temp, sourceFile); err != nil {
 		_ = temp.Close()
 		return fmt.Errorf("copy %q to %q: %w", source, destination, err)
+	}
+	if err := temp.Chmod(mode); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("chmod temp file for %q: %w", destination, err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("close temp file for %q: %w", destination, err)
+	}
+	if err := os.Rename(tempName, destination); err != nil {
+		return fmt.Errorf("replace %q: %w", destination, err)
+	}
+	return nil
+}
+
+func writeFileAtomic(destination string, content []byte, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return fmt.Errorf("create destination directory: %w", err)
+	}
+	temp, err := os.CreateTemp(filepath.Dir(destination), ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file for %q: %w", destination, err)
+	}
+	tempName := temp.Name()
+	defer os.Remove(tempName)
+	if _, err := temp.Write(content); err != nil {
+		_ = temp.Close()
+		return fmt.Errorf("write temp file for %q: %w", destination, err)
 	}
 	if err := temp.Chmod(mode); err != nil {
 		_ = temp.Close()

@@ -24,6 +24,12 @@ func TestRuntimeConfigDefaultsPreLoopContinue(t *testing.T) {
 	if cfg.PreLoopContinue.Command != "" {
 		t.Fatalf("expected disabled pre_loop_continue command, got %#v", cfg.PreLoopContinue.Command)
 	}
+	if cfg.OptionalSkillName != DefaultOptionalSkillName {
+		t.Fatalf("expected default optional skill %q, got %q", DefaultOptionalSkillName, cfg.OptionalSkillName)
+	}
+	if cfg.OptionalSkillPath != "" {
+		t.Fatalf("expected default optional skill path empty, got %#v", cfg.OptionalSkillPath)
+	}
 	if cfg.Hooks.StopTimeoutSeconds != DefaultStopHookTimeoutSeconds {
 		t.Fatalf("expected stop timeout %d, got %d", DefaultStopHookTimeoutSeconds, cfg.Hooks.StopTimeoutSeconds)
 	}
@@ -68,6 +74,46 @@ max_output_bytes = 42
 	}
 	if cfg.PreLoopContinue.MaxOutputBytes != 42 {
 		t.Fatalf("unexpected max output %d", cfg.PreLoopContinue.MaxOutputBytes)
+	}
+}
+
+func TestResolveOptionalContinuationConfigAllowsNameWithoutPath(t *testing.T) {
+	t.Parallel()
+
+	cfg := RuntimeConfig{
+		OptionalSkillName:         " codex-loop ",
+		ExtraContinuationGuidance: " Resume tracked state. ",
+	}
+
+	resolved := ResolveOptionalContinuationConfig(cfg, t.TempDir())
+
+	if resolved.SkillName != "codex-loop" {
+		t.Fatalf("expected skill name, got %#v", resolved.SkillName)
+	}
+	if resolved.SkillPath != "" {
+		t.Fatalf("expected no skill path, got %#v", resolved.SkillPath)
+	}
+	if resolved.ExtraGuidance != "Resume tracked state." {
+		t.Fatalf("unexpected guidance %#v", resolved.ExtraGuidance)
+	}
+}
+
+func TestResolveOptionalContinuationConfigDropsInvalidPathEvenWithName(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	cfg := RuntimeConfig{
+		OptionalSkillName: "focused-qa",
+		OptionalSkillPath: "../outside/SKILL.md",
+	}
+
+	resolved := ResolveOptionalContinuationConfig(cfg, workspaceRoot)
+
+	if resolved.SkillName != "" {
+		t.Fatalf("expected invalid path to drop skill name, got %#v", resolved.SkillName)
+	}
+	if resolved.SkillPath != "" {
+		t.Fatalf("expected invalid path to be empty, got %#v", resolved.SkillPath)
 	}
 }
 

@@ -9,9 +9,11 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+const DefaultOptionalSkillName = "codex-loop"
+
 const DefaultRuntimeConfig = `# Optional continuation guidance appended to every automatic continuation.
-# Leave these blank if you want generic behavior only.
-optional_skill_name = ""
+# The bundled codex-loop skill is enabled by default for restart-safe tracking.
+optional_skill_name = "codex-loop"
 optional_skill_path = ""
 extra_continuation_guidance = ""
 
@@ -91,6 +93,7 @@ func LoadEffectiveRuntimeConfig(paths Paths, cwd string, workspaceRoot string) R
 
 func defaultRuntimeConfig() RuntimeConfig {
 	return RuntimeConfig{
+		OptionalSkillName: DefaultOptionalSkillName,
 		Hooks: HooksConfig{
 			StopTimeoutSeconds: DefaultStopHookTimeoutSeconds,
 		},
@@ -174,7 +177,7 @@ func ResolveOptionalContinuationConfig(cfg RuntimeConfig, workspaceRoot string) 
 	extraGuidance := strings.TrimSpace(cfg.ExtraContinuationGuidance)
 
 	resolvedSkillPath := ""
-	if skillName != "" && skillPathText != "" {
+	if skillPathText != "" {
 		candidate := filepath.Clean(skillPathText)
 		if !filepath.IsAbs(candidate) {
 			candidate = filepath.Join(workspaceRoot, candidate)

@@ -513,6 +513,36 @@ extra_continuation_guidance = "Capture concrete evidence before you stop."
 	}
 }
 
+func TestStopContinuesBeforeDeadlineWithNameOnlyOptionalSkill(t *testing.T) {
+	t.Parallel()
+
+	paths := mustPaths(t)
+	repoRoot := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repoRoot, 0o755); err != nil {
+		t.Fatalf("create repo root: %v", err)
+	}
+	writeRuntimeConfig(t, paths, "optional_skill_name = \"codex-loop\"\nextra_continuation_guidance = \"Resume tracked state before stopping.\"\n")
+
+	start := fixedTime()
+	writeLoop(t, paths, "sess-1", repoRoot, "[[CODEX_LOOP name=\"release-stress-qa\" min=\"6h\"]]\nRun the QA task.", start)
+	result, err := HandleStop(context.Background(), paths, StopPayload{
+		SessionID: "sess-1",
+		CWD:       repoRoot,
+	}, start.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("handle stop: %v", err)
+	}
+	if result == nil || result["decision"] != "block" {
+		t.Fatalf("expected block result, got %#v", result)
+	}
+	reason, ok := result["reason"].(string)
+	if !ok {
+		t.Fatalf("expected string reason, got %#v", result["reason"])
+	}
+	assertContains(t, reason, "- explicit use of the codex-loop skill")
+	assertContains(t, reason, "Resume tracked state before stopping.")
+}
+
 func TestStopMarksTimeLoopCompletedAfterDeadline(t *testing.T) {
 	t.Parallel()
 

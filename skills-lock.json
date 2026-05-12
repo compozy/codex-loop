@@ -1,11 +1,17 @@
 {
   "version": 1,
   "skills": {
+    "agent-exploration": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/agent-exploration/SKILL.md",
+      "computedHash": "d81d12d9d866bf0eee0c29b19fb6f26dfd1ae0f5a26d1ea86dd4bdf33962afa0"
+    },
     "architectural-analysis": {
       "source": "pedronauck/skills",
       "sourceType": "github",
-      "skillPath": "skills/architectural-analysis/SKILL.md",
-      "computedHash": "d9599934bcf249166bdc5d28a06042380cfb03d1850c2fc00a66e9741b665a1f"
+      "skillPath": "skills/mine/architectural-analysis/SKILL.md",
+      "computedHash": "44b1d8a79812b6b8df32ba362bbbff7ef4920044024bae125097b76271b21068"
     },
     "bubbletea": {
       "source": "pedronauck/skills",
@@ -31,29 +37,65 @@
       "skillPath": "skills/exa-web-search-free/SKILL.md",
       "computedHash": "4456756ff2cf096cc7c6d2fc9d6771e2a1ea0084868f28b69f68157757ee50c8"
     },
+    "git-rebase": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/git-rebase/SKILL.md",
+      "computedHash": "e9597a749af2703293cce2221aa58026ad7066e50e1a407422586866b94f25ec"
+    },
     "golang-pro": {
       "source": "pedronauck/skills",
       "sourceType": "github",
       "skillPath": "skills/golang-pro/SKILL.md",
       "computedHash": "c90a0798a12ea2d9191508439ec3191dd96713310615260ebe82ec5a09a4a434"
     },
+    "no-workarounds": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/no-workarounds/SKILL.md",
+      "computedHash": "0badbdebe214819ea6a6494e8f47fbd1c6e7acd36d70d195d6dacec1752b7887"
+    },
     "qa-execution": {
       "source": "pedronauck/skills",
       "sourceType": "github",
-      "skillPath": "skills/qa-execution/SKILL.md",
-      "computedHash": "1e0d0aa6fea29d814d62ea5513a8f2411a560bb62acc499aa411c72eb537c8ec"
+      "skillPath": "skills/mine/qa-execution/SKILL.md",
+      "computedHash": "0bf8f735bc3c5b7a94f94c8d15fb5f3c0d286789212fcd5047f2e76aab336af3"
     },
     "qa-report": {
       "source": "pedronauck/skills",
       "sourceType": "github",
-      "skillPath": "skills/qa-report/SKILL.md",
-      "computedHash": "231866d5f491bb0f4dcc3c999362a942bd2e26b5b9289c1ced66bc8433a3e2c4"
+      "skillPath": "skills/mine/qa-report/SKILL.md",
+      "computedHash": "04b040c534702daffee00fdd01aeaeadf12f8f1d0144ea2f16e43756b26c6cab"
+    },
+    "refactoring-analysis": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/refactoring-analysis/SKILL.md",
+      "computedHash": "1cf2ae96436825483ca3cf5479c8733b6d9e30707944e6be8b31d1db42c6af33"
+    },
+    "ship-pr": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/ship-pr/SKILL.md",
+      "computedHash": "d6b4fefd797add7f41fd098f66578f6ffea5a658d93187c3eaf221b2477abc65"
     },
     "skill-best-practices": {
       "source": "pedronauck/skills",
       "sourceType": "github",
-      "skillPath": "skills/skill-best-practices/SKILL.md",
-      "computedHash": "b39b873b9becf59f9a515809efd08c0547cd94c0296873032d3206705189b2ab"
+      "skillPath": "skills/mine/skill-best-practices/SKILL.md",
+      "computedHash": "f906d43205c182eb633ff7df6ece6f83e8784de77f1b475f0b6c3084a5ed4d06"
+    },
+    "skill-load-tips": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/skill-load-tips/SKILL.md",
+      "computedHash": "07ebde30e4b4ae598ac600989de729a470f1b71769847cb4152e596d7535a2bc"
+    },
+    "testing-boss": {
+      "source": "pedronauck/skills",
+      "sourceType": "github",
+      "skillPath": "skills/mine/testing-boss/SKILL.md",
+      "computedHash": "2b1585ba06742cc047f63199b4da2ca9d5b043389e8b7677b04df767a3228a42"
     }
   }
 }
